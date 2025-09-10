@@ -1,0 +1,287 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  GO_VERSION: '1.21'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # 代码质量检查和测试
+  test:
+    name: Test and Code Quality
+    runs-on: ubuntu-latest
+    
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: Aa13892349048!
+          MYSQL_DATABASE: taskflow_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+      
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Verify dependencies
+      run: go mod verify
+
+    - name: Run go vet
+      run: go vet ./...
+
+    - name: Install staticcheck
+      run: go install honnef.co/go/tools/cmd/staticcheck@latest
+
+    - name: Run staticcheck
+      run: staticcheck ./...
+
+    - name: Install golint
+      run: go install golang.org/x/lint/golint@latest
+
+    - name: Run golint
+      run: golint ./...
+
+    - name: Run tests
+      env:
+        DB_HOST: localhost
+        DB_PORT: 3306
+        DB_USER: root
+        DB_PASSWORD: Aa13892349048!
+        DB_NAME: taskflow_test
+        REDIS_HOST: localhost
+        REDIS_PORT: 6379
+        ENV: test
+      run: |
+        go test -v -race -coverprofile=coverage.out ./...
+        go tool cover -html=coverage.out -o coverage.html
+
+    - name: Upload coverage reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: coverage-report
+        path: |
+          coverage.out
+          coverage.html
+
+    - name: Check test coverage
+      run: |
+        COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print substr($3, 1, length($3)-1)}')
+        echo "Test coverage: $COVERAGE%"
+        if (( $(echo "$COVERAGE < 70" | bc -l) )); then
+          echo "❌ Test coverage is below 70%"
+          exit 1
+        else
+          echo "✅ Test coverage is above 70%"
+        fi
+
+  # 构建和安全扫描
+  build:
+    name: Build and Security Scan
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Build application
+      run: |
+        CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o bin/api ./cmd/api
+        CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o bin/migrate ./cmd/migrate
+
+    - name: Run Gosec Security Scanner
+      uses: securecodewarrior/github-action-gosec@master
+      with:
+        args: './...'
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: binaries
+        path: bin/
+
+  # Docker镜像构建
+  docker:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: [test, build]
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Container Registry
+      if: github.event_name != 'pull_request'
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix=sha-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  # 数据库迁移验证
+  migration:
+    name: Database Migration Test
+    runs-on: ubuntu-latest
+    needs: test
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: Aa13892349048!
+          MYSQL_DATABASE: taskflow_migration_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Test database migrations
+      env:
+        DB_HOST: localhost
+        DB_PORT: 3306
+        DB_USER: root
+        DB_PASSWORD: Aa13892349048!
+        DB_NAME: taskflow_migration_test
+      run: |
+        # 运行迁移脚本
+        chmod +x ./scripts/migrate.sh
+        ./scripts/migrate.sh migrate
+        
+        # 验证GORM模型一致性
+        go run cmd/migrate/main.go -cmd=validate
+
+  # 部署到开发环境 (仅在main分支)
+  deploy-dev:
+    name: Deploy to Development
+    runs-on: ubuntu-latest
+    needs: [test, build, docker, migration]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: development
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Deploy to development environment
+      run: |
+        echo "🚀 Deploying to development environment..."
+        echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+        # 这里添加实际的部署脚本
+        # 例如：kubectl, docker-compose, 或其他部署工具
+        
+    - name: Run health checks
+      run: |
+        echo "🔍 Running health checks..."
+        # 添加健康检查脚本
+        # curl -f http://dev-api.taskflow.com/health || exit 1
+
+    - name: Notify deployment success
+      run: |
+        echo "✅ Deployment to development environment completed successfully!"
+
+  # 通知
+  notify:
+    name: Notify Results
+    runs-on: ubuntu-latest
+    needs: [test, build, docker, migration]
+    if: always()
+
+    steps:
+    - name: Notify success
+      if: ${{ needs.test.result == 'success' && needs.build.result == 'success' && needs.docker.result == 'success' && needs.migration.result == 'success' }}
+      run: |
+        echo "🎉 All CI/CD jobs completed successfully!"
+        
+    - name: Notify failure
+      if: ${{ needs.test.result == 'failure' || needs.build.result == 'failure' || needs.docker.result == 'failure' || needs.migration.result == 'failure' }}
+      run: |
+        echo "❌ Some CI/CD jobs failed!"
+        echo "Test: ${{ needs.test.result }}"
+        echo "Build: ${{ needs.build.result }}"
+        echo "Docker: ${{ needs.docker.result }}"
+        echo "Migration: ${{ needs.migration.result }}"

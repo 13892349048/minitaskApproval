@@ -1,0 +1,40 @@
+# 使用官方Go镜像作为构建环境
+FROM golang:1.21-alpine AS development
+
+# 设置工作目录
+WORKDIR /app
+
+# 安装必要的工具
+RUN apk add --no-cache \
+    git \
+    curl \
+    mysql-client \
+    ca-certificates \
+    tzdata
+
+# 设置时区
+ENV TZ=Asia/Shanghai
+
+# 安装Air热重载工具
+RUN go install github.com/cosmtrek/air@latest
+
+# 安装Delve调试工具
+RUN go install github.com/go-delve/delve/cmd/dlv@latest
+
+# 复制go mod文件
+COPY go.mod go.sum ./
+
+# 下载依赖
+RUN go mod download
+
+# 复制源代码
+COPY . .
+
+# 设置权限
+RUN chmod +x ./scripts/migrate.sh
+
+# 暴露端口
+EXPOSE 8080 2345
+
+# 使用Air进行热重载开发
+CMD ["air", "-c", ".air.toml"]

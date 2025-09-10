@@ -1,0 +1,140 @@
+version: '3.8'
+
+services:
+  # MySQL数据库
+  mysql:
+    image: mysql:8.0
+    container_name: taskflow-mysql-dev
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: Aa13892349048!
+      MYSQL_DATABASE: taskflow
+      MYSQL_USER: taskflow_user
+      MYSQL_PASSWORD: taskflow_pass
+      MYSQL_CHARSET: utf8mb4
+      MYSQL_COLLATION: utf8mb4_unicode_ci
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./scripts/migrations:/docker-entrypoint-initdb.d
+      - ./configs/mysql/my.cnf:/etc/mysql/conf.d/my.cnf
+    command: >
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --explicit_defaults_for_timestamp=true
+      --lower_case_table_names=1
+      --max_allowed_packet=128M
+      --sql_mode="STRICT_TRANS_TABLES,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION"
+    networks:
+      - taskflow-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  # Redis缓存
+  redis:
+    image: redis:7-alpine
+    container_name: taskflow-redis-dev
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+      - ./configs/redis/redis.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf
+    networks:
+      - taskflow-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      timeout: 10s
+      retries: 5
+
+  # TaskFlow应用程序（开发模式）
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: taskflow-app-dev
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "2345:2345" # Delve调试端口
+    environment:
+      - ENV=development
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USER=root
+      - DB_PASSWORD=Aa13892349048!
+      - DB_NAME=taskflow
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - GIN_MODE=debug
+    volumes:
+      - .:/app
+      - go_mod_cache:/go/pkg/mod
+      - go_build_cache:/root/.cache/go-build
+    working_dir: /app
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - taskflow-network
+    command: >
+      sh -c "
+        echo 'Waiting for database to be ready...' &&
+        sleep 10 &&
+        echo 'Running database migrations...' &&
+        ./scripts/migrate.sh migrate &&
+        echo 'Starting application...' &&
+        air -c .air.toml
+      "
+
+  # Adminer数据库管理工具
+  adminer:
+    image: adminer:4.8.1
+    container_name: taskflow-adminer-dev
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: mysql
+      ADMINER_DESIGN: galkaev
+    networks:
+      - taskflow-network
+    depends_on:
+      - mysql
+
+  # Redis Commander管理工具
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: taskflow-redis-commander-dev
+    restart: unless-stopped
+    ports:
+      - "8082:8081"
+    environment:
+      REDIS_HOSTS: local:redis:6379
+      HTTP_USER: admin
+      HTTP_PASSWORD: admin123
+    networks:
+      - taskflow-network
+    depends_on:
+      - redis
+
+volumes:
+  mysql_data:
+    driver: local
+  redis_data:
+    driver: local
+  go_mod_cache:
+    driver: local
+  go_build_cache:
+    driver: local
+
+networks:
+  taskflow-network:
+    driver: bridge
