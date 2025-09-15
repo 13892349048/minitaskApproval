@@ -88,6 +88,19 @@ CREATE TABLE IF NOT EXISTS `role_permissions` (
     FOREIGN KEY (`permission_id`) REFERENCES `permissions`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='角色权限关联表';
 
+-- 权限属性定义表
+CREATE TABLE permission_attributes (
+    id VARCHAR(36) PRIMARY KEY,
+    name VARCHAR(100) UNIQUE NOT NULL,
+    attribute_type ENUM('user', 'resource', 'environment', 'action') NOT NULL,
+    data_type ENUM('string', 'number', 'boolean', 'array', 'object') NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    INDEX idx_name (name),
+    INDEX idx_type (attribute_type)
+);
+
 -- ABAC权限策略表
 CREATE TABLE IF NOT EXISTS `permission_policies` (
     `id` VARCHAR(36) NOT NULL PRIMARY KEY COMMENT '策略ID',

@@ -3,7 +3,7 @@ package mysql
 import (
 	"context"
 
-	"github.com/taskflow/internal/application/shared"
+	"github.com/taskflow/internal/domain/shared"
 	"gorm.io/gorm"
 )
 

@@ -4,8 +4,9 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/taskflow/internal/application/shared"
-	"github.com/taskflow/internal/application/user"
+	userAppService "github.com/taskflow/internal/application/service"
+	"github.com/taskflow/internal/domain/auth/service"
+	"github.com/taskflow/internal/domain/auth/valueobject"
 	"github.com/taskflow/pkg/errors"
 	"github.com/taskflow/pkg/logger"
 	"go.uber.org/zap"
@@ -13,12 +14,12 @@ import (
 
 // AuthHandler 认证处理器
 type AuthHandler struct {
-	jwtService  shared.JWTService
-	userService *user.UserAppService
+	jwtService  service.JWTService
+	userService *userAppService.UserAppService
 }
 
 // NewAuthHandler 创建认证处理器
-func NewAuthHandler(jwtService shared.JWTService, userService *user.UserAppService) *AuthHandler {
+func NewAuthHandler(jwtService service.JWTService, userService *userAppService.UserAppService) *AuthHandler {
 	return &AuthHandler{
 		jwtService:  jwtService,
 		userService: userService,
@@ -46,8 +47,8 @@ type RefreshTokenRequest struct {
 
 // AuthResponse 认证响应
 type AuthResponse struct {
-	User   *UserInfo         `json:"user"`
-	Tokens *shared.TokenPair `json:"tokens"`
+	User   *UserInfo              `json:"user"`
+	Tokens *valueobject.TokenPair `json:"tokens"`
 }
 
 // UserInfo 用户信息
@@ -140,7 +141,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 
 	// 创建用户
-	createReq := &user.CreateUserRequest{
+	createReq := &userAppService.CreateUserRequest{
 		Name:     req.Name,
 		Email:    req.Email,
 		Password: req.Password,
@@ -164,7 +165,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 
 	// 生成JWT令牌
-	tokens, err := h.jwtService.GenerateTokens(userResp.ID, userResp.Email, []string{shared.RoleEmployee})
+	tokens, err := h.jwtService.GenerateTokens(userResp.ID, userResp.Email, []string{string(valueobject.RoleEmployee)})
 	if err != nil {
 		logger.Error("Failed to generate tokens after registration",
 			zap.String("user_id", userResp.ID),
@@ -185,7 +186,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 			Name:   userResp.Name,
 			Email:  userResp.Email,
 			Phone:  &req.Phone,
-			Roles:  []string{shared.RoleEmployee},
+			Roles:  []string{string(valueobject.RoleEmployee)},
 			Status: "active",
 		},
 		Tokens: tokens,
@@ -275,7 +276,7 @@ func (h *AuthHandler) GetProfile(c *gin.Context) {
 		return
 	}
 
-	userClaims, ok := claims.(*shared.Claims)
+	userClaims, ok := claims.(*valueobject.Claims)
 	if !ok {
 		errors.RespondWithError(c, http.StatusInternalServerError, "INVALID_USER_CLAIMS", "用户信息格式错误")
 		return

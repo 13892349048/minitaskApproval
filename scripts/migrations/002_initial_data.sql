@@ -203,6 +203,90 @@ INSERT INTO `permission_policies` (`id`, `name`, `description`, `resource_type`,
 ('policy-project-owner-manage-tasks', '项目所有者管理任务', '项目所有者可以管理项目下的所有任务', 'task', '*', 'allow',
 '{"subject.id": {"$eq": "resource.project.owner_id"}}', 70, TRUE);
 
+-- 插入基础ABAC策略规则
+INSERT INTO permission_policies (id, name, description, resource_type, action, effect, conditions, priority) VALUES
+
+-- 项目管理策略
+('policy_project_owner_full', '项目所有者完全权限', '项目所有者对自己的项目有完全权限', 'project', '*', 'allow', 
+ JSON_OBJECT('user.id', JSON_OBJECT('eq', '${resource.owner_id}')), 100),
+
+('policy_project_manager_manage', '项目管理者管理权限', '项目管理者可以管理被分配的项目', 'project', 'update', 'allow',
+ JSON_OBJECT('user.id', JSON_OBJECT('eq', '${resource.manager_id}')), 90),
+
+('policy_project_member_read', '项目成员查看权限', '项目成员可以查看项目信息', 'project', 'read', 'allow',
+ JSON_OBJECT('user.id', JSON_OBJECT('in', '${resource.member_ids}')), 80),
+
+-- 任务管理策略
+('policy_task_responsible_manage', '任务负责人管理权限', '任务负责人可以管理自己负责的任务', 'task', '*', 'allow',
+ JSON_OBJECT('user.id', JSON_OBJECT('eq', '${resource.responsible_id}')), 100),
+
+('policy_task_creator_edit', '任务创建者编辑权限', '任务创建者可以编辑草稿状态的任务', 'task', 'update', 'allow',
+ JSON_OBJECT(
+   'and', JSON_ARRAY(
+     JSON_OBJECT('user.id', JSON_OBJECT('eq', '${resource.creator_id}')),
+     JSON_OBJECT('resource.status', JSON_OBJECT('eq', 'draft'))
+   )
+ ), 90),
+
+('policy_task_participant_read', '任务参与者查看权限', '任务参与者可以查看任务详情', 'task', 'read', 'allow',
+ JSON_OBJECT('user.id', JSON_OBJECT('in', '${resource.participant_ids}')), 80),
+
+('policy_task_project_manager', '项目管理者任务权限', '项目管理者可以管理项目内的任务', 'task', '*', 'allow',
+ JSON_OBJECT('user.id', JSON_OBJECT('eq', '${project.manager_id}')), 85),
+
+-- 延期申请策略
+('policy_extension_self_request', '自己申请延期', '用户可以为自己的任务申请延期', 'extension', 'request', 'allow',
+ JSON_OBJECT(
+   'or', JSON_ARRAY(
+     JSON_OBJECT('user.id', JSON_OBJECT('eq', '${task.responsible_id}')),
+     JSON_OBJECT('user.id', JSON_OBJECT('in', '${task.participant_ids}'))
+   )
+ ), 100),
+
+('policy_extension_responsible_approve', '任务负责人审批延期', '任务负责人可以审批参与人员的延期申请', 'extension', 'approve', 'allow',
+ JSON_OBJECT(
+   'and', JSON_ARRAY(
+     JSON_OBJECT('user.id', JSON_OBJECT('eq', '${task.responsible_id}')),
+     JSON_OBJECT('extension.requester_id', JSON_OBJECT('in', '${task.participant_ids}'))
+   )
+ ), 100),
+
+('policy_extension_project_leader_approve', '项目领导审批负责人延期', '项目领导可以审批任务负责人的延期申请', 'extension', 'approve', 'allow',
+ JSON_OBJECT(
+   'and', JSON_ARRAY(
+     JSON_OBJECT('user.id', JSON_OBJECT('eq', '${project.manager_id}')),
+     JSON_OBJECT('extension.requester_id', JSON_OBJECT('eq', '${task.responsible_id}'))
+   )
+ ), 90),
+
+('policy_extension_director_approve', '大领导审批延期', '大领导可以审批任何延期申请', 'extension', 'approve', 'allow',
+ JSON_OBJECT('user.role', JSON_OBJECT('eq', 'director')), 95);
+
+-- 插入基础权限属性定义
+INSERT INTO permission_attributes (id, name, attribute_type, data_type, description) VALUES
+-- 用户属性
+('attr_user_id', 'user.id', 'user', 'string', '用户ID'),
+('attr_user_role', 'user.role', 'user', 'string', '用户角色'),
+('attr_user_department', 'user.department_id', 'user', 'string', '用户部门ID'),
+('attr_user_manager', 'user.manager_id', 'user', 'string', '用户直属领导ID'),
+
+-- 资源属性
+('attr_project_owner', 'project.owner_id', 'resource', 'string', '项目所有者ID'),
+('attr_project_manager', 'project.manager_id', 'resource', 'string', '项目管理者ID'),
+('attr_project_members', 'project.member_ids', 'resource', 'array', '项目成员ID列表'),
+('attr_task_creator', 'task.creator_id', 'resource', 'string', '任务创建者ID'),
+('attr_task_responsible', 'task.responsible_id', 'resource', 'string', '任务负责人ID'),
+('attr_task_participants', 'task.participant_ids', 'resource', 'array', '任务参与人员ID列表'),
+('attr_task_project', 'task.project_id', 'resource', 'string', '任务所属项目ID'),
+
+-- 环境属性
+('attr_time_now', 'env.current_time', 'environment', 'string', '当前时间'),
+('attr_ip_address', 'env.ip_address', 'environment', 'string', '请求IP地址'),
+
+-- 动作属性
+('attr_action_type', 'action.type', 'action', 'string', '操作类型'),
+('attr_action_target', 'action.target_id', 'action', 'string', '操作目标ID');
+
 -- ================================================
 -- 创建默认超级管理员用户
 -- ================================================

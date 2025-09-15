@@ -10,7 +10,7 @@ database:
   host: "localhost"
   port: 3306
   username: "root"
-  password: "Aa13892349048!"
+  password: "root"
   database: "taskflow"
   charset: "utf8mb4"
   parse_time: true
@@ -18,6 +18,11 @@ database:
   max_idle_conns: 10
   max_open_conns: 100
   conn_max_lifetime: 3600 # 秒
+
+eventstore:
+  buffer_size: 10
+  max_retries: 3
+  retry_delay: 10
 
 # Redis配置
 redis:

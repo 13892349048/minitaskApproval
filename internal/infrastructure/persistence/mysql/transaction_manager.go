@@ -3,7 +3,7 @@ package mysql
 import (
 	"context"
 
-	"github.com/taskflow/internal/application/shared"
+	"github.com/taskflow/internal/domain/shared"
 	"github.com/taskflow/pkg/logger"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -15,7 +15,7 @@ type TransactionManager struct {
 }
 
 // NewTransactionManager 创建事务管理器
-func NewTransactionManager(db *gorm.DB) shared.TransactionManager {
+func NewTransactionManager(db *gorm.DB) *TransactionManager {
 	return &TransactionManager{db: db}
 }
 
@@ -25,7 +25,6 @@ func (tm *TransactionManager) WithTransaction(ctx context.Context, fn func(ctx c
 	return tm.db.Transaction(func(tx *gorm.DB) error {
 		// 将事务实例放入上下文，供Repository使用
 		txCtx := context.WithValue(ctx, shared.TransactionKey, tx)
-
 		// 执行业务逻辑
 		if err := fn(txCtx); err != nil {
 			// 记录事务回滚日志（用于调试）

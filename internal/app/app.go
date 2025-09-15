@@ -8,11 +8,16 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/taskflow/internal/application/shared"
-	"github.com/taskflow/internal/application/user"
-	"github.com/taskflow/internal/infrastructure/auth"
+	_ "github.com/taskflow/docs" // 导入Swagger文档
+	appUserService "github.com/taskflow/internal/application/service"
+	"github.com/taskflow/internal/domain/auth/service"
+	"github.com/taskflow/internal/domain/auth/valueobject"
+	domainService "github.com/taskflow/internal/domain/service"
 	"github.com/taskflow/internal/infrastructure/config"
+	"github.com/taskflow/internal/infrastructure/messaging/memory"
 	"github.com/taskflow/internal/infrastructure/persistence/mysql"
+	"github.com/taskflow/internal/infrastructure/security"
+	"github.com/taskflow/internal/infrastructure/validation"
 	httpServer "github.com/taskflow/internal/interfaces/http"
 	"github.com/taskflow/pkg/logger"
 	"go.uber.org/zap"
@@ -24,9 +29,9 @@ type App struct {
 	config         *config.Config
 	db             *gorm.DB
 	httpServer     *httpServer.Server
-	transactionMgr shared.TransactionManager
-	jwtService     shared.JWTService
-	userAppService *user.UserAppService
+	transactionMgr service.TransactionManager
+	jwtService     service.JWTService
+	userAppService *appUserService.UserAppService
 }
 
 // NewApp 创建新的应用程序实例
@@ -84,7 +89,7 @@ func NewApp(configPath string) (*App, error) {
 	transactionMgr := mysql.NewTransactionManager(db)
 
 	// 6. 创建JWT服务
-	jwtService := auth.NewJWTService(shared.JWTConfig{
+	jwtService := security.NewJWTService(valueobject.JWTConfig{
 		Secret:             cfg.JWT.Secret,
 		AccessTokenExpiry:  time.Duration(cfg.JWT.ExpireHours) * time.Hour,
 		RefreshTokenExpiry: time.Duration(cfg.JWT.RefreshExpireHours) * time.Hour,
@@ -93,9 +98,40 @@ func NewApp(configPath string) (*App, error) {
 
 	// 7. 创建仓储层
 	userRepo := mysql.NewUserRepository(db)
+	taskRepo := mysql.NewTaskRepository(db)
+	projectRepo := mysql.NewProjectRepository(db, nil)
+	departmentRepo := mysql.NewDepartmentRepository(db)
 
-	// 8. 创建应用服务层
-	userAppService := user.NewUserAppService(userRepo, transactionMgr)
+	// 7.1. 创建用户验证器和密码哈希器
+	userValidator := validation.NewUserValidator()
+	passwordHasher := security.NewPasswordHasher()
+
+	pubStore := memory.NewInMemoryEventStore(100)
+	// 7.2. 创建事件发布器
+
+	userEventPublisher := memory.NewInMemoryEventBus(memory.EventBusConfig{BufferSize: cfg.EventBusStore.BufferSize,
+		MaxRetries: cfg.EventBusStore.BufferSize,
+		RetryDelay: time.Duration(cfg.EventBusStore.RetryDelay * int(time.Millisecond)),
+	}, pubStore)
+
+	// 7.3. 创建用户领域服务（使用增强版本）
+	userDomainService := domainService.NewUserDomainServiceEnhanced(
+		userRepo,
+		taskRepo,
+		projectRepo,
+		departmentRepo,
+		userEventPublisher,
+		logger.Logger,
+	)
+
+	// 创建用户应用服务
+	userAppService := appUserService.NewUserAppService(
+		userDomainService,
+		transactionMgr,
+		userValidator,
+		userRepo,
+		passwordHasher,
+	)
 
 	// 9. 创建HTTP服务器
 	httpSrv := httpServer.NewServer(cfg, jwtService, userAppService)

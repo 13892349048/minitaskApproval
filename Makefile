@@ -48,6 +48,23 @@ test-coverage: test
 		echo "✅ 测试覆盖率达标"; \
 	fi
 
+## 代码生成
+generate:
+	@echo "Generating code..."
+	go generate ./...
+
+## 生成Swagger文档
+swagger:
+	@echo "Generating Swagger documentation..."
+	swag init -g cmd/api/main.go -o docs --parseDependency --parseInternal
+	@echo "Swagger documentation generated in docs/ directory"
+
+## 安装Swagger工具
+install-swagger:
+	@echo "Installing Swagger CLI..."
+	@go install github.com/swaggo/swag/cmd/swag@latest
+	@echo "✅ Swagger CLI安装完成"
+
 ## lint: 代码检查
 lint:
 	@echo "🔍 运行代码检查..."

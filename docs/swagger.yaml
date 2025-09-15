@@ -1,0 +1,341 @@
+basePath: /api/v1
+definitions:
+  APIResponse:
+    description: API统一响应格式
+    properties:
+      code:
+        description: 响应码
+        example: 200
+        type: integer
+      data:
+        description: 响应数据
+      error:
+        description: 错误信息
+        example: error info
+        type: string
+      message:
+        description: 响应消息
+        example: success
+        type: string
+    type: object
+  HealthStatus:
+    description: 服务健康状态信息
+    properties:
+      services:
+        additionalProperties:
+          type: string
+        description: 各服务状态
+        type: object
+      status:
+        description: 服务状态
+        example: healthy
+        type: string
+      timestamp:
+        description: 检查时间
+        example: "2023-01-01T00:00:00Z"
+        type: string
+      version:
+        description: 服务版本
+        example: 1.0.0
+        type: string
+    type: object
+  errors.ErrorResponse:
+    properties:
+      code:
+        type: string
+      details: {}
+      error:
+        type: string
+      message:
+        type: string
+    type: object
+  errors.SuccessResponse:
+    properties:
+      data: {}
+      message:
+        type: string
+      success:
+        type: boolean
+    type: object
+  handler.AuthResponse:
+    properties:
+      tokens:
+        $ref: '#/definitions/shared.TokenPair'
+      user:
+        $ref: '#/definitions/handler.UserInfo'
+    type: object
+  handler.LoginRequest:
+    properties:
+      email:
+        type: string
+      password:
+        minLength: 6
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  handler.RefreshTokenRequest:
+    properties:
+      refresh_token:
+        type: string
+    required:
+    - refresh_token
+    type: object
+  handler.RegisterRequest:
+    properties:
+      email:
+        type: string
+      name:
+        maxLength: 50
+        minLength: 2
+        type: string
+      password:
+        maxLength: 100
+        minLength: 6
+        type: string
+      phone:
+        type: string
+    required:
+    - email
+    - name
+    - password
+    type: object
+  handler.UserInfo:
+    properties:
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      phone:
+        type: string
+      roles:
+        items:
+          type: string
+        type: array
+      status:
+        type: string
+    type: object
+  shared.TokenPair:
+    properties:
+      access_token:
+        type: string
+      expires_at:
+        description: 访问令牌过期时间点
+        type: string
+      expires_in:
+        description: 访问令牌过期时间（秒）
+        type: integer
+      refresh_token:
+        type: string
+      token_type:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@taskflow.com
+    name: TaskFlow API Support
+    url: http://www.taskflow.com/support
+  description: |-
+    多层级项目管理系统 API 文档
+
+    这是一个基于 DDD 和事件驱动架构的企业级项目管理系统。
+
+    主要功能包括：
+    - 用户认证和授权
+    - 项目管理
+    - 任务管理
+    - 权限控制
+    - 事件驱动的业务流程
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: http://swagger.io/terms/
+  title: TaskFlow API
+  version: "1.0"
+paths:
+  /api/v1/auth/login:
+    post:
+      consumes:
+      - application/json
+      description: 用户使用邮箱和密码登录系统
+      parameters:
+      - description: 登录信息
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 登录成功
+          schema:
+            $ref: '#/definitions/handler.AuthResponse'
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/errors.ErrorResponse'
+        "401":
+          description: 认证失败
+          schema:
+            $ref: '#/definitions/errors.ErrorResponse'
+        "500":
+          description: 服务器内部错误
+          schema:
+            $ref: '#/definitions/errors.ErrorResponse'
+      summary: 用户登录
+      tags:
+      - 认证
+  /api/v1/auth/logout:
+    post:
+      consumes:
+      - application/json
+      description: 用户登出系统，撤销令牌
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 登出成功
+          schema:
+            $ref: '#/definitions/errors.SuccessResponse'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/errors.ErrorResponse'
+        "500":
+          description: 服务器内部错误
+          schema:
+            $ref: '#/definitions/errors.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: 用户登出
+      tags:
+      - 认证
+  /api/v1/auth/profile:
+    get:
+      consumes:
+      - application/json
+      description: 获取当前登录用户的详细资料
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 用户资料
+          schema:
+            $ref: '#/definitions/handler.UserInfo'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/errors.ErrorResponse'
+        "500":
+          description: 服务器内部错误
+          schema:
+            $ref: '#/definitions/errors.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: 获取当前用户资料
+      tags:
+      - 认证
+  /api/v1/auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: 使用刷新令牌获取新的访问令牌
+      parameters:
+      - description: 刷新令牌
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.RefreshTokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 新的令牌对
+          schema:
+            $ref: '#/definitions/shared.TokenPair'
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/errors.ErrorResponse'
+        "401":
+          description: 刷新令牌无效
+          schema:
+            $ref: '#/definitions/errors.ErrorResponse'
+        "500":
+          description: 服务器内部错误
+          schema:
+            $ref: '#/definitions/errors.ErrorResponse'
+      summary: 刷新访问令牌
+      tags:
+      - 认证
+  /api/v1/auth/register:
+    post:
+      consumes:
+      - application/json
+      description: 新用户注册账号
+      parameters:
+      - description: 注册信息
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: 注册成功
+          schema:
+            $ref: '#/definitions/handler.AuthResponse'
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/errors.ErrorResponse'
+        "409":
+          description: 邮箱已存在
+          schema:
+            $ref: '#/definitions/errors.ErrorResponse'
+        "500":
+          description: 服务器内部错误
+          schema:
+            $ref: '#/definitions/errors.ErrorResponse'
+      summary: 用户注册
+      tags:
+      - 认证
+  /health:
+    get:
+      consumes:
+      - application/json
+      description: 检查服务健康状态
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 服务正常
+          schema:
+            allOf:
+            - $ref: '#/definitions/APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/HealthStatus'
+              type: object
+      summary: 健康检查
+      tags:
+      - Health
+schemes:
+- http
+- https
+securityDefinitions:
+  ApiKeyAuth:
+    description: Type "Bearer" followed by a space and JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

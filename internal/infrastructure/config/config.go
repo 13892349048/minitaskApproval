@@ -8,12 +8,13 @@ import (
 
 // Config 配置结构体
 type Config struct {
-	App      AppConfig      `mapstructure:"app"`
-	Database DatabaseConfig `mapstructure:"database"`
-	Redis    RedisConfig    `mapstructure:"redis"`
-	JWT      JWTConfig      `mapstructure:"jwt"`
-	Log      LogConfig      `mapstructure:"log"`
-	Upload   UploadConfig   `mapstructure:"upload"`
+	App           AppConfig           `mapstructure:"app"`
+	Database      DatabaseConfig      `mapstructure:"database"`
+	Redis         RedisConfig         `mapstructure:"redis"`
+	JWT           JWTConfig           `mapstructure:"jwt"`
+	Log           LogConfig           `mapstructure:"log"`
+	Upload        UploadConfig        `mapstructure:"upload"`
+	EventBusStore EventBusStoreConfig `mapstructure:"eventstore"`
 }
 
 // AppConfig 应用配置结构体
@@ -74,6 +75,13 @@ type UploadConfig struct {
 	AllowedTypes []string `mapstructure:"allowed_types"`
 	StoragePath  string   `mapstructure:"storage_path"`
 	ChunkSize    int      `mapstructure:"chunk_size"`
+}
+
+// UploadConfig 文件上传配置结构体
+type EventBusStoreConfig struct {
+	BufferSize int `mapstructure:"buffer_size"`
+	MaxRetries int `mapstructure:"max_retries"`
+	RetryDelay int `mapstructure:"retry_delay"`
 }
 
 // LoadConfig 加载配置文件

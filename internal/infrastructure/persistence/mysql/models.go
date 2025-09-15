@@ -10,35 +10,6 @@ import (
 // 用户相关模型
 // ================================================
 
-// User 用户模型
-type User struct {
-	ID           string         `gorm:"type:varchar(36);primaryKey" json:"id"`
-	Email        string         `gorm:"type:varchar(255);uniqueIndex;not null" json:"email"`
-	Name         string         `gorm:"type:varchar(100);not null" json:"name"`
-	PasswordHash string         `gorm:"type:varchar(255);not null" json:"-"`
-	Avatar       *string        `gorm:"type:varchar(500)" json:"avatar"`
-	Status       string         `gorm:"type:enum('active','inactive','suspended');default:'active'" json:"status"`
-	Phone        *string        `gorm:"type:varchar(20)" json:"phone"`
-	Department   *string        `gorm:"type:varchar(100)" json:"department"`
-	Position     *string        `gorm:"type:varchar(100)" json:"position"`
-	JoinDate     *time.Time     `gorm:"type:date" json:"join_date"`
-	DepartmentID *string        `gorm:"type:varchar(36)" json:"department_id"`
-	ManagerID    *string        `gorm:"type:varchar(36)" json:"manager_id"`
-	CreatedAt    time.Time      `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt    time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
-	DeletedAt    gorm.DeletedAt `gorm:"index" json:"-"`
-
-	// 关联关系
-	Roles              []Role            `gorm:"many2many:user_roles;" json:"roles,omitempty"`
-	OwnedProjects      []Project         `gorm:"foreignKey:OwnerID" json:"owned_projects,omitempty"`
-	ManagedProjects    []Project         `gorm:"foreignKey:ManagerID" json:"managed_projects,omitempty"`
-	ProjectMemberships []ProjectMember   `gorm:"foreignKey:UserID" json:"project_memberships,omitempty"`
-	CreatedTasks       []Task            `gorm:"foreignKey:CreatorID" json:"created_tasks,omitempty"`
-	ResponsibleTasks   []Task            `gorm:"foreignKey:ResponsibleID" json:"responsible_tasks,omitempty"`
-	TaskParticipations []TaskParticipant `gorm:"foreignKey:UserID" json:"task_participations,omitempty"`
-	UploadedFiles      []File            `gorm:"foreignKey:UploaderID" json:"uploaded_files,omitempty"`
-}
-
 // Role 角色模型
 type Role struct {
 	ID          string    `gorm:"type:varchar(36);primaryKey" json:"id"`
@@ -49,7 +20,7 @@ type Role struct {
 	CreatedAt   time.Time `gorm:"autoCreateTime" json:"created_at"`
 
 	// 关联关系
-	Users       []User       `gorm:"many2many:user_roles;" json:"users,omitempty"`
+	Users       []UserModel  `gorm:"many2many:user_roles;" json:"users,omitempty"`
 	Permissions []Permission `gorm:"many2many:role_permissions;" json:"permissions,omitempty"`
 }
 
@@ -61,6 +32,7 @@ type Permission struct {
 	Action      string    `gorm:"type:varchar(50);not null" json:"action"`
 	Description *string   `gorm:"type:text" json:"description"`
 	CreatedAt   time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt   time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 
 	// 关联关系
 	Roles []Role `gorm:"many2many:role_permissions;" json:"roles,omitempty"`
@@ -74,9 +46,19 @@ type UserRole struct {
 	AssignedBy *string   `gorm:"type:varchar(36)" json:"assigned_by"`
 
 	// 关联关系
-	User     User  `gorm:"foreignKey:UserID" json:"user,omitempty"`
-	Role     Role  `gorm:"foreignKey:RoleID" json:"role,omitempty"`
-	Assigner *User `gorm:"foreignKey:AssignedBy" json:"assigner,omitempty"`
+	User     UserModel  `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	Role     Role       `gorm:"foreignKey:RoleID" json:"role,omitempty"`
+	Assigner *UserModel `gorm:"foreignKey:AssignedBy" json:"assigner,omitempty"`
+}
+
+// RolePermission 角色权限关联模型
+type RolePermission struct {
+	RoleID       string `gorm:"type:varchar(36);primaryKey" json:"role_id"`
+	PermissionID string `gorm:"type:varchar(36);primaryKey" json:"permission_id"`
+
+	// 关联关系
+	Role       Role       `gorm:"foreignKey:RoleID" json:"role,omitempty"`
+	Permission Permission `gorm:"foreignKey:PermissionID" json:"permission,omitempty"`
 }
 
 // PermissionPolicy ABAC权限策略模型
@@ -118,8 +100,8 @@ type Project struct {
 	// 关联关系
 	ParentProject *Project        `gorm:"foreignKey:ParentProjectID" json:"parent_project,omitempty"`
 	ChildProjects []Project       `gorm:"foreignKey:ParentProjectID" json:"child_projects,omitempty"`
-	Owner         User            `gorm:"foreignKey:OwnerID" json:"owner,omitempty"`
-	Manager       *User           `gorm:"foreignKey:ManagerID" json:"manager,omitempty"`
+	Owner         UserModel       `gorm:"foreignKey:OwnerID" json:"owner,omitempty"`
+	Manager       *UserModel      `gorm:"foreignKey:ManagerID" json:"manager,omitempty"`
 	Members       []ProjectMember `gorm:"foreignKey:ProjectID" json:"members,omitempty"`
 	Tasks         []Task          `gorm:"foreignKey:ProjectID" json:"tasks,omitempty"`
 }
@@ -134,9 +116,9 @@ type ProjectMember struct {
 	AddedBy   *string   `gorm:"type:varchar(36)" json:"added_by"`
 
 	// 关联关系
-	Project Project `gorm:"foreignKey:ProjectID" json:"project,omitempty"`
-	User    User    `gorm:"foreignKey:UserID" json:"user,omitempty"`
-	Adder   *User   `gorm:"foreignKey:AddedBy" json:"adder,omitempty"`
+	Project Project    `gorm:"foreignKey:ProjectID" json:"project,omitempty"`
+	User    UserModel  `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	Adder   *UserModel `gorm:"foreignKey:AddedBy" json:"adder,omitempty"`
 }
 
 // ================================================
@@ -165,8 +147,8 @@ type Task struct {
 
 	// 关联关系
 	Project          Project            `gorm:"foreignKey:ProjectID" json:"project,omitempty"`
-	Creator          User               `gorm:"foreignKey:CreatorID" json:"creator,omitempty"`
-	Responsible      User               `gorm:"foreignKey:ResponsibleID" json:"responsible,omitempty"`
+	Creator          UserModel          `gorm:"foreignKey:CreatorID" json:"creator,omitempty"`
+	Responsible      UserModel          `gorm:"foreignKey:ResponsibleID" json:"responsible,omitempty"`
 	Participants     []TaskParticipant  `gorm:"foreignKey:TaskID" json:"participants,omitempty"`
 	Executions       []TaskExecution    `gorm:"foreignKey:TaskID" json:"executions,omitempty"`
 	RecurrenceRule   *RecurrenceRule    `gorm:"foreignKey:TaskID" json:"recurrence_rule,omitempty"`
@@ -184,9 +166,9 @@ type TaskParticipant struct {
 	AddedBy string    `gorm:"type:varchar(36);not null" json:"added_by"`
 
 	// 关联关系
-	Task  Task `gorm:"foreignKey:TaskID" json:"task,omitempty"`
-	User  User `gorm:"foreignKey:UserID" json:"user,omitempty"`
-	Adder User `gorm:"foreignKey:AddedBy" json:"adder,omitempty"`
+	Task  Task      `gorm:"foreignKey:TaskID" json:"task,omitempty"`
+	User  UserModel `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	Adder UserModel `gorm:"foreignKey:AddedBy" json:"adder,omitempty"`
 }
 
 // RecurrenceRule 重复任务规则模型
@@ -233,8 +215,8 @@ type ParticipantCompletion struct {
 
 	// 关联关系
 	Execution   TaskExecution `gorm:"foreignKey:ExecutionID" json:"execution,omitempty"`
-	Participant User          `gorm:"foreignKey:ParticipantID" json:"participant,omitempty"`
-	Reviewer    *User         `gorm:"foreignKey:ReviewerID" json:"reviewer,omitempty"`
+	Participant UserModel     `gorm:"foreignKey:ParticipantID" json:"participant,omitempty"`
+	Reviewer    *UserModel    `gorm:"foreignKey:ReviewerID" json:"reviewer,omitempty"`
 }
 
 // ================================================
@@ -255,7 +237,7 @@ type ApprovalRecord struct {
 	// 关联关系
 	Task      Task           `gorm:"foreignKey:TaskID" json:"task,omitempty"`
 	Execution *TaskExecution `gorm:"foreignKey:ExecutionID" json:"execution,omitempty"`
-	Approver  User           `gorm:"foreignKey:ApproverID" json:"approver,omitempty"`
+	Approver  UserModel      `gorm:"foreignKey:ApproverID" json:"approver,omitempty"`
 }
 
 // ExtensionRequest 延期申请模型
@@ -273,9 +255,9 @@ type ExtensionRequest struct {
 	ReviewComment    *string    `gorm:"type:text" json:"review_comment"`
 
 	// 关联关系
-	Task      Task  `gorm:"foreignKey:TaskID" json:"task,omitempty"`
-	Requester User  `gorm:"foreignKey:RequesterID" json:"requester,omitempty"`
-	Reviewer  *User `gorm:"foreignKey:ReviewerID" json:"reviewer,omitempty"`
+	Task      Task       `gorm:"foreignKey:TaskID" json:"task,omitempty"`
+	Requester UserModel  `gorm:"foreignKey:RequesterID" json:"requester,omitempty"`
+	Reviewer  *UserModel `gorm:"foreignKey:ReviewerID" json:"reviewer,omitempty"`
 }
 
 // ================================================
@@ -294,7 +276,7 @@ type DomainEvent struct {
 	UserID        *string   `gorm:"type:varchar(36)" json:"user_id"`
 
 	// 关联关系
-	User *User `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	User *UserModel `gorm:"foreignKey:UserID" json:"user,omitempty"`
 }
 
 // OperationLog 操作日志模型
@@ -311,7 +293,7 @@ type OperationLog struct {
 	CreatedAt      time.Time `gorm:"autoCreateTime" json:"created_at"`
 
 	// 关联关系
-	User *User `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	User *UserModel `gorm:"foreignKey:UserID" json:"user,omitempty"`
 }
 
 // ================================================
@@ -334,7 +316,7 @@ type File struct {
 	DeletedAt    gorm.DeletedAt `gorm:"index" json:"-"`
 
 	// 关联关系
-	Uploader     User              `gorm:"foreignKey:UploaderID" json:"uploader,omitempty"`
+	Uploader     UserModel         `gorm:"foreignKey:UploaderID" json:"uploader,omitempty"`
 	Associations []FileAssociation `gorm:"foreignKey:FileID" json:"associations,omitempty"`
 }
 
@@ -355,10 +337,10 @@ type FileAssociation struct {
 // 表名映射
 // ================================================
 
-func (User) TableName() string                  { return "users" }
 func (Role) TableName() string                  { return "roles" }
 func (Permission) TableName() string            { return "permissions" }
 func (UserRole) TableName() string              { return "user_roles" }
+func (RolePermission) TableName() string        { return "role_permissions" }
 func (PermissionPolicy) TableName() string      { return "permission_policies" }
 func (Project) TableName() string               { return "projects" }
 func (ProjectMember) TableName() string         { return "project_members" }
@@ -378,7 +360,7 @@ func (FileAssociation) TableName() string       { return "file_associations" }
 // 模型切片类型定义（用于批量操作）
 // ================================================
 
-type Users []User
+type Users []UserModel
 type Roles []Role
 type Permissions []Permission
 type Projects []Project

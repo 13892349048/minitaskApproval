@@ -25,7 +25,7 @@ func (m *Migrator) ValidateModels() error {
 	logger.Info("开始验证GORM模型与数据库结构...")
 
 	models := []interface{}{
-		&User{}, &Role{}, &Permission{}, &UserRole{}, &PermissionPolicy{},
+		&UserModel{}, &Role{}, &Permission{}, &UserRole{}, &PermissionPolicy{},
 		&Project{}, &ProjectMember{},
 		&Task{}, &TaskParticipant{}, &RecurrenceRule{}, &TaskExecution{}, &ParticipantCompletion{},
 		&ApprovalRecord{}, &ExtensionRequest{},
@@ -147,7 +147,7 @@ func (m *Migrator) SyncModels(isDevelopment bool) error {
 	logger.Warn("开发环境：正在同步GORM模型到数据库...")
 
 	models := []interface{}{
-		&User{}, &Role{}, &Permission{}, &UserRole{}, &PermissionPolicy{},
+		&UserModel{}, &Role{}, &Permission{}, &UserRole{}, &PermissionPolicy{},
 		&Project{}, &ProjectMember{},
 		&Task{}, &TaskParticipant{}, &RecurrenceRule{}, &TaskExecution{}, &ParticipantCompletion{},
 		&ApprovalRecord{}, &ExtensionRequest{},

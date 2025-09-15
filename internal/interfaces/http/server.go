@@ -7,12 +7,18 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/taskflow/internal/application/shared"
-	"github.com/taskflow/internal/application/user"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
+	"github.com/swaggo/swag"
+	userAppService "github.com/taskflow/internal/application/service"
+	"github.com/taskflow/internal/domain/auth/service"
 	"github.com/taskflow/internal/infrastructure/config"
+	"github.com/taskflow/internal/infrastructure/http/controllers"
 	"github.com/taskflow/internal/interfaces/http/handler"
 	"github.com/taskflow/pkg/logger"
 	"go.uber.org/zap"
+
+	_ "github.com/taskflow/docs" // Import generated docs
 )
 
 // Server HTTP服务器
@@ -20,13 +26,13 @@ type Server struct {
 	config      *config.Config
 	router      *gin.Engine
 	server      *http.Server
-	jwtService  shared.JWTService
-	userService *user.UserAppService
+	jwtService  service.JWTService
+	userService *userAppService.UserAppService
 	authHandler *handler.AuthHandler
 }
 
 // NewServer 创建新的HTTP服务器
-func NewServer(cfg *config.Config, jwtService shared.JWTService, userService *user.UserAppService) *Server {
+func NewServer(cfg *config.Config, jwtService service.JWTService, userService *userAppService.UserAppService) *Server {
 	// 设置Gin模式
 	if cfg.App.Mode == "production" {
 		gin.SetMode(gin.ReleaseMode)
@@ -48,6 +54,9 @@ func NewServer(cfg *config.Config, jwtService shared.JWTService, userService *us
 
 	// 设置路由
 	server.setupRoutes()
+
+	// 设置Swagger文档
+	server.setupSwagger()
 
 	return server
 }
@@ -88,13 +97,20 @@ func (s *Server) setupMiddleware() {
 }
 
 func (s *Server) setupRoutes() {
-	// 健康检查（无需认证）
-	s.router.GET("/health", s.healthCheck)
+	// 创建健康检查控制器
+	healthController := controllers.NewHealthController()
+
+	// 健康检查（无需认证，根路径）
+	s.router.GET("/health", healthController.HealthCheck)
 	s.router.GET("/version", s.versionInfo)
 
 	// API版本分组
 	v1 := s.router.Group("/api/v1")
 	{
+		// 健康检查（API版本路径）
+		v1.GET("/health", healthController.HealthCheck)
+		v1.GET("/version", s.versionInfo)
+
 		// 认证相关（无需token）
 		auth := v1.Group("/auth")
 		{
@@ -205,14 +221,56 @@ func (s *Server) setupRoutes() {
 	}
 }
 
-// 健康检查处理器
-func (s *Server) healthCheck(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"status":  "ok",
-		"time":    time.Now().Format(time.RFC3339),
-		"app":     s.config.App.Name,
-		"version": s.config.App.Version,
-	})
+// setupSwagger 设置Swagger文档路由
+func (s *Server) setupSwagger() {
+	// 只在开发和测试环境启用Swagger
+	if s.config.App.Mode != "production" {
+		// 添加CORS中间件以防止跨域问题
+		s.router.Use(func(c *gin.Context) {
+			c.Header("Access-Control-Allow-Origin", "*")
+			c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			if c.Request.Method == "OPTIONS" {
+				c.AbortWithStatus(204)
+				return
+			}
+			c.Next()
+		})
+
+		// 添加调试端点检查Swagger文档注册状态
+		s.router.GET("/swagger-debug", func(c *gin.Context) {
+			spec := swag.GetSwagger("swagger")
+			c.JSON(http.StatusOK, gin.H{
+				"swagger_enabled": true,
+				"mode":            s.config.App.Mode,
+				"spec_found":      spec != nil,
+				"message":         "Swagger is enabled in non-production mode",
+			})
+		})
+
+		// Swagger UI 路由 - 配置CSP以允许内联脚本
+		s.router.GET("/swagger/*any", func(c *gin.Context) {
+			// 设置Content Security Policy以允许Swagger UI的内联脚本
+			c.Header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'")
+			ginSwagger.WrapHandler(swaggerFiles.Handler)(c)
+		})
+
+		// 重定向根路径到 Swagger UI
+		s.router.GET("/docs", func(c *gin.Context) {
+			c.Redirect(302, "/swagger/index.html")
+		})
+
+		// API文档根路径重定向
+		s.router.GET("/", func(c *gin.Context) {
+			c.Redirect(302, "/swagger/index.html")
+		})
+
+		logger.Info("Swagger documentation enabled",
+			zap.String("url", fmt.Sprintf("http://localhost:%d/swagger/index.html", s.config.App.Port)),
+			zap.String("mode", s.config.App.Mode))
+	} else {
+		logger.Info("Swagger documentation disabled in production mode")
+	}
 }
 
 // 版本信息处理器
